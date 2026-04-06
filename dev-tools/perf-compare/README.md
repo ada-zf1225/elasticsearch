@@ -7,7 +7,7 @@ It is intended for local source checkouts that you sync with Git.
 
 - Gradle warmup: `./gradlew --no-daemon help`
 - Build benchmark: `./gradlew --no-daemon clean localDistro`
-- Runtime benchmark from the built distribution:
+- Runtime benchmark from the `localDistro` install under `build/distribution/local`:
   - startup time to HTTP ready
   - one bulk index of deterministic documents
   - a fixed number of search requests

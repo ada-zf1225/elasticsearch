@@ -22,25 +22,25 @@ function Measure-Step {
     [int64]$stopwatch.ElapsedMilliseconds
 }
 
-function Get-ArchivePath {
+function Get-LocalDistroPath {
     param(
         [string]$RepoRoot
     )
 
-    $archiveDir = Join-Path $RepoRoot 'distribution\archives\windows-zip\build\distributions'
-    if (-not (Test-Path $archiveDir)) {
-        throw "Distribution directory not found: $archiveDir"
+    $localDir = Join-Path $RepoRoot 'build\distribution\local'
+    if (-not (Test-Path $localDir)) {
+        throw "Local distro directory not found: $localDir"
     }
 
-    $archive = Get-ChildItem -Path $archiveDir -Filter 'elasticsearch-*.zip' |
+    $distro = Get-ChildItem -Path $localDir -Directory -Filter 'elasticsearch-*' |
         Sort-Object LastWriteTimeUtc |
         Select-Object -Last 1
 
-    if (-not $archive) {
-        throw 'Could not locate a Windows distribution archive. Run localDistro first.'
+    if (-not $distro) {
+        throw 'Could not locate a local distribution install. Run localDistro first.'
     }
 
-    $archive.FullName
+    $distro.FullName
 }
 
 function Wait-ForHttp {
@@ -191,7 +191,7 @@ $buildMs = $null
 $startupMs = $null
 $bulkMs = $null
 $searchMs = $null
-$archivePath = $null
+$distroSourcePath = $null
 $process = $null
 $serverPid = $null
 
@@ -205,7 +205,7 @@ try {
     }
 
     if (-not $SkipRuntime) {
-        $archivePath = Get-ArchivePath -RepoRoot $repoRoot
+        $distroSourcePath = Get-LocalDistroPath -RepoRoot $repoRoot
         $installDir = Join-Path $runRoot 'install'
         $bulkFile = Join-Path $runRoot 'bench.ndjson'
         $pidFile = Join-Path $runRoot 'elasticsearch.pid'
@@ -213,12 +213,12 @@ try {
         $stderrLog = Join-Path $runRoot 'es-stderr.log'
 
         New-Item -Path $installDir -ItemType Directory -Force | Out-Null
-        Write-Host "Extracting $archivePath..."
-        Expand-Archive -Path $archivePath -DestinationPath $installDir -Force
+        Write-Host "Copying local distro from $distroSourcePath..."
+        Copy-Item -Path $distroSourcePath -Destination $installDir -Recurse -Force
 
-        $esHome = Get-ChildItem -Path $installDir -Directory | Select-Object -First 1
+        $esHome = Get-ChildItem -Path $installDir -Directory -Filter 'elasticsearch-*' | Select-Object -First 1
         if (-not $esHome) {
-            throw 'Could not locate extracted Elasticsearch home.'
+            throw 'Could not locate copied Elasticsearch home.'
         }
 
         $env:ES_JAVA_OPTS = "-Xms$Heap -Xmx$Heap"
@@ -324,7 +324,7 @@ $resultObject = [ordered]@{
         clean_local_distro_ms = $buildMs
     }
     runtime = [ordered]@{
-        archive_path = $archivePath
+        distribution_source_path = $distroSourcePath
         http_port = $Port
         startup_ms = $startupMs
         bulk_ms = $bulkMs
@@ -355,7 +355,7 @@ $markdown = @"
 
 ## Runtime
 
-- Distribution archive: $(Format-Nullable $archivePath)
+- Distribution source: $(Format-Nullable $distroSourcePath)
 - Startup to HTTP ready: $(Format-Nullable $startupMs) ms
 - Bulk indexing: $(Format-Nullable $bulkMs) ms
 - Search loop: $(Format-Nullable $searchMs) ms

@@ -127,38 +127,16 @@ detect_cpu_model() {
     fi
 }
 
-detect_archive_path() {
-    local archive_dir archive_path candidate
-    case "$(uname -s)-$(uname -m)" in
-        Darwin-arm64)
-            archive_dir="${REPO_ROOT}/distribution/archives/darwin-aarch64-tar/build/distributions"
-            ;;
-        Darwin-x86_64)
-            archive_dir="${REPO_ROOT}/distribution/archives/darwin-tar/build/distributions"
-            ;;
-        Linux-aarch64)
-            archive_dir="${REPO_ROOT}/distribution/archives/linux-aarch64-tar/build/distributions"
-            ;;
-        Linux-x86_64)
-            archive_dir="${REPO_ROOT}/distribution/archives/linux-tar/build/distributions"
-            ;;
-        *)
-            echo "Unsupported platform: $(uname -s)-$(uname -m)" >&2
-            exit 1
-            ;;
-    esac
+detect_local_distro_path() {
+    local local_dir candidate
+    local_dir="${REPO_ROOT}/build/distribution/local"
+    [[ -d "${local_dir}" ]] || return 0
 
-    if [[ ! -d "${archive_dir}" ]]; then
-        echo "Distribution directory not found: ${archive_dir}" >&2
-        exit 1
-    fi
-
-    archive_path=""
-    for candidate in "${archive_dir}"/elasticsearch-*.tar.gz; do
-        [[ -f "${candidate}" ]] || continue
-        archive_path="${candidate}"
+    for candidate in "${local_dir}"/elasticsearch-*; do
+        [[ -d "${candidate}" ]] || continue
+        printf '%s\n' "${candidate}"
+        return 0
     done
-    printf '%s\n' "${archive_path}"
 }
 
 wait_for_http() {
@@ -191,7 +169,7 @@ RUN_ID="${SAFE_LABEL}-$(date -u '+%Y%m%dT%H%M%SZ')"
 RUN_ROOT="${WORK_DIR}/${RUN_ID}"
 RESULT_JSON="${RESULTS_DIR}/${RUN_ID}.json"
 RESULT_MD="${RESULTS_DIR}/${RUN_ID}.md"
-ARCHIVE_PATH=""
+DISTRO_SOURCE_PATH=""
 SERVER_PID=""
 
 mkdir -p "${RUN_ROOT}"
@@ -230,9 +208,9 @@ if [[ "${SKIP_BUILD}" -eq 0 ]]; then
 fi
 
 if [[ "${SKIP_RUNTIME}" -eq 0 ]]; then
-    ARCHIVE_PATH="$(detect_archive_path)"
-    if [[ -z "${ARCHIVE_PATH}" ]]; then
-        echo "Could not locate a distribution archive. Run localDistro first." >&2
+    DISTRO_SOURCE_PATH="$(detect_local_distro_path)"
+    if [[ -z "${DISTRO_SOURCE_PATH}" ]]; then
+        echo "Could not locate local distro under build/distribution/local. Run localDistro first." >&2
         exit 1
     fi
 
@@ -241,15 +219,9 @@ if [[ "${SKIP_RUNTIME}" -eq 0 ]]; then
     PID_FILE="${RUN_ROOT}/elasticsearch.pid"
     mkdir -p "${INSTALL_DIR}"
 
-    echo "Extracting ${ARCHIVE_PATH}..."
-    tar -xzf "${ARCHIVE_PATH}" -C "${INSTALL_DIR}"
-    ES_HOME=""
-    for extracted_dir in "${INSTALL_DIR}"/*; do
-        if [[ -d "${extracted_dir}" ]]; then
-            ES_HOME="${extracted_dir}"
-            break
-        fi
-    done
+    echo "Copying local distro from ${DISTRO_SOURCE_PATH}..."
+    cp -R "${DISTRO_SOURCE_PATH}" "${INSTALL_DIR}/"
+    ES_HOME="${INSTALL_DIR}/$(basename "${DISTRO_SOURCE_PATH}")"
     if [[ -z "${ES_HOME}" ]]; then
         echo "Could not locate extracted Elasticsearch home." >&2
         exit 1
@@ -345,7 +317,7 @@ cat > "${RESULT_JSON}" <<EOF
     "clean_local_distro_ms": $(json_number_or_null "${BUILD_MS}")
   },
   "runtime": {
-    "archive_path": "$(json_escape "${ARCHIVE_PATH}")",
+    "distribution_source_path": "$(json_escape "${DISTRO_SOURCE_PATH}")",
     "http_port": ${PORT},
     "startup_ms": $(json_number_or_null "${STARTUP_MS}"),
     "bulk_ms": $(json_number_or_null "${BULK_MS}"),
@@ -375,7 +347,7 @@ cat > "${RESULT_MD}" <<EOF
 
 ## Runtime
 
-- Distribution archive: ${ARCHIVE_PATH:-skipped}
+- Distribution source: ${DISTRO_SOURCE_PATH:-skipped}
 - Startup to HTTP ready: ${STARTUP_MS:-skipped} ms
 - Bulk indexing: ${BULK_MS:-skipped} ms
 - Search loop: ${SEARCH_MS:-skipped} ms
