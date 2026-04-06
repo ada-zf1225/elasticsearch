@@ -100,6 +100,14 @@ function Invoke-Gradle {
     }
 }
 
+function Get-JavaVersionString {
+    $output = (& cmd.exe /d /c 'java -version 2>&1' | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "java -version failed with exit code $LASTEXITCODE"
+    }
+    $output -replace '\s+', ' '
+}
+
 function Format-Nullable {
     param(
         $Value
@@ -141,7 +149,7 @@ New-Item -Path $runRoot -ItemType Directory -Force | Out-Null
 
 $gitCommit = (& git rev-parse --short HEAD).Trim()
 $gitBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
-$javaVersion = ((& java -version 2>&1) | Out-String).Trim() -replace '\s+', ' '
+$javaVersion = Get-JavaVersionString
 $osVersion = [System.Environment]::OSVersion.VersionString
 $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
 $cpuModel = (Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name).Trim()
