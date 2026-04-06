@@ -52,3 +52,6 @@ git push
 ```
 
 Then pull on the other machine and compare the two Markdown files side by side.
+
+
+java -XshowSettings:properties -version 2>&1 | Select-String 'java.vendor|java.vm.vendor|java.runtime.version|java.home'
