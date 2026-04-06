@@ -108,6 +108,38 @@ function Get-JavaVersionString {
     $output -replace '\s+', ' '
 }
 
+function Get-OsArchitectureString {
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem
+        if ($os -and $os.OSArchitecture) {
+            return $os.OSArchitecture
+        }
+    } catch {
+    }
+
+    if ($env:PROCESSOR_ARCHITEW6432) {
+        return $env:PROCESSOR_ARCHITEW6432
+    }
+
+    if ($env:PROCESSOR_ARCHITECTURE) {
+        return $env:PROCESSOR_ARCHITECTURE
+    }
+
+    return 'unknown'
+}
+
+function Get-CpuModelString {
+    try {
+        $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name
+        if ($cpu) {
+            return $cpu.Trim()
+        }
+    } catch {
+    }
+
+    return 'unknown'
+}
+
 function Format-Nullable {
     param(
         $Value
@@ -151,8 +183,8 @@ $gitCommit = (& git rev-parse --short HEAD).Trim()
 $gitBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
 $javaVersion = Get-JavaVersionString
 $osVersion = [System.Environment]::OSVersion.VersionString
-$osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-$cpuModel = (Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name).Trim()
+$osArch = Get-OsArchitectureString
+$cpuModel = Get-CpuModelString
 
 $warmupMs = $null
 $buildMs = $null
@@ -190,18 +222,22 @@ try {
         }
 
         $env:ES_JAVA_OPTS = "-Xms$Heap -Xmx$Heap"
+        $esBat = Join-Path $esHome.FullName 'bin\elasticsearch.bat'
         $startArgs = @(
-            '-p', $pidFile,
+            '/d',
+            '/c',
+            "`"$esBat`"",
+            '-p', "`"$pidFile`"",
             '-E', 'xpack.security.enabled=false',
             '-E', 'discovery.type=single-node',
             '-E', 'network.host=127.0.0.1',
             '-E', "http.port=$Port",
-            '-E', "path.data=$(Join-Path $runRoot 'data')",
-            '-E', "path.logs=$(Join-Path $runRoot 'logs')"
+            '-E', "`"path.data=$(Join-Path $runRoot 'data')`"",
+            '-E', "`"path.logs=$(Join-Path $runRoot 'logs')`""
         )
 
         Write-Host 'Starting Elasticsearch from distribution...'
-        $process = Start-Process -FilePath (Join-Path $esHome.FullName 'bin\elasticsearch.bat') `
+        $process = Start-Process -FilePath 'cmd.exe' `
             -ArgumentList $startArgs `
             -RedirectStandardOutput $stdoutLog `
             -RedirectStandardError $stderrLog `
